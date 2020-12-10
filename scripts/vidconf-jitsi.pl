@@ -23,6 +23,7 @@ my $mech = WWW::Mechanize::Chrome->new(
     data_directory => $d,
     profile => $profile,
     enable_first_run => 1,
+    mute_audio => 0,
 );
 
 my $bl = WWW::Mechanize::Chrome::URLBlacklist->new(

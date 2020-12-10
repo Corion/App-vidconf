@@ -90,7 +90,7 @@ $mech->target->send_message('Browser.setWindowBounds',
 my $received = $mech->target->add_listener('Network.webSocketFrameReceived', sub {
     my $d = $_[0]->{params}->{response}->{payloadData};
     use Data::Dumper;
-    warn d;
+    warn $d;
 });
 
 # Consider entering chat via the console?!

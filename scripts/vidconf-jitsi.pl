@@ -36,6 +36,7 @@ my $bl = WWW::Mechanize::Chrome::URLBlacklist->new(
     whitelist => [
         qr!\bmeet\.jit\.si\b!,
         qr!\bweb-cdn.jitsi.net\b!,
+        qr!\byoutube\b!,
     ],
 
     # fail all unknown URLs

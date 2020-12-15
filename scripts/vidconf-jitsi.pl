@@ -15,6 +15,14 @@ GetOptions(
     'n|name=s'       => \my $name,
 );
 
+my %conf = (
+    camera_device_plugin => [],
+    camera_setup => [
+        "gio mount -u gphoto2://Canon_Inc._Canon_Digital_Camera/",
+        "gphoto2 --stdout --capture-movie | ffmpeg -i - -vcodec rawvideo -pix_fmt yuv420p -threads 0 -f v4l2 /dev/video0",
+    ],
+);
+
 my $d = tempdir(CLEANUP => 1 );
 my $profile = "$d/profile/test1";
 mkpath $profile;

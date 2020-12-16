@@ -1,6 +1,7 @@
 #!perl
 use strict;
 use warnings;
+use 5.012;
 use Getopt::Long;
 use WWW::Mechanize::Chrome;
 use WWW::Mechanize::Chrome::URLBlacklist;
@@ -9,6 +10,7 @@ use File::Temp 'tempdir';
 use File::Path;
 
 Log::Log4perl->easy_init($ERROR);
+#Log::Log4perl->easy_init($DEBUG);
 
 GetOptions(
     'm|meeting-id=s' => \my $meeting_id,
@@ -37,14 +39,15 @@ my $mech = WWW::Mechanize::Chrome->new(
 my $bl = WWW::Mechanize::Chrome::URLBlacklist->new(
     blacklist => [
         qr!\bgoogleadservices\b!,
+        qr!^https://telemetry.servers.getgo.com/!,
     ],
     whitelist => [
-        qr!\bhttps://global.gotomeeting.com/!,
-        qr!\bhttps://weblibrary.cdn.getgo.com/!,
-        qr!\bhttps://join.gotomeeting.com/!,
-        qr!\bhttps://app.gotomeeting.com/!,
-        qr!\bhttps://authentication.logmeininc.com/!,
-        qr!\bhttps://apiglobal.gotomeeting.com/!,
+        qr!^https://global.gotomeeting.com/!,
+        qr!^https://weblibrary.cdn.getgo.com/!,
+        qr!^https://join.gotomeeting.com/!,
+        qr!^https://app.gotomeeting.com/!,
+        qr!^https://authentication.logmeininc.com/!,
+        qr!^https://apiglobal.gotomeeting.com/!,
     ],
 
     # fail all unknown URLs
@@ -61,35 +64,6 @@ $bl->enable($mech);
 $mech->target->send_message('Browser.grantPermissions',
     permissions => ['videoCapture','audioCapture'],
 )->get;
-
-$mech->get("https://global.gotomeeting.com/join/$meeting_id");
-
-$mech->wait_until_visible(xpath => '//*[@role="radio" and @value="voip"]');
-
-# Select voip as input method (instead of pstn dial-in)
-$mech->click({ xpath => '//*[@role="radio" and @value="voip"]' });
-
-# Continue
-$mech->click({ xpath => '//button' });
-
-# Select microphone and speakers, later
-$mech->sleep(1);
-
-# Continue
-$mech->wait_until_visible(xpath => '//button[0]');
-$mech->click({ xpath => '//button[0]' });
-
-$mech->sleep(60);
-
-my $name_field = $mech->selector( 'div.prejoin-input-area input', one => 1 );
-$mech->set_field( field => $name_field, value => $name );
-$mech->sleep(0.1);
-$mech->click({ selector => '//*[@data-testid="prejoin.joinMeeting"]' });
-
-$mech->sleep(1);
-$mech->click({ selector => '.chrome-extension-banner__close-container' });
-
-#$mech->sleep(10);
 
 my $window_info = $mech->target->send_message('Browser.getWindowForTarget')->get;
 #use Data::Dumper; warn Dumper $window_info;
@@ -109,6 +83,47 @@ $mech->target->send_message('Browser.setWindowBounds',
         windowState => 'fullscreen',
     },
 )->get;
+
+$mech->get("https://global.gotomeeting.com/join/$meeting_id");
+
+$mech->wait_until_visible(xpath => '//*[@role="radio" and @value="voip"]');
+
+# Select voip as input method (instead of pstn dial-in)
+$mech->click({ xpath => '//*[@role="radio" and @value="voip"]' });
+
+# Continue
+$mech->click({ xpath => '//button' });
+
+# Select microphone and speakers, later
+$mech->sleep(1);
+
+# Continue
+say "Waiting for default mic and speakers";
+$mech->wait_until_visible(xpath => '//button[text() = "Save and continue"]');
+say "Clicking default mic and speakers";
+$mech->click({ xpath => '//button[text() = "Save and continue"]', first => 1 });
+
+# There are some redirects maybe before the "please wait" screen
+$mech->sleep(2);
+
+# Check/loop whether the meeting is open yet
+my $notopen = '//h2[starts-with(text(),"Waiting for ")]';
+while( my @wait = $mech->xpath( $notopen )) {
+    say "Waiting for meeting to open";
+    $mech->wait_until_invisible(xpath => $notopen, max_wait => 5);
+};
+
+# Now, enter our name, etc. - this is not yet implemented
+
+my $name_field = $mech->selector( 'div.prejoin-input-area input', one => 1 );
+$mech->set_field( field => $name_field, value => $name );
+$mech->sleep(0.1);
+$mech->click({ selector => '//*[@data-testid="prejoin.joinMeeting"]' });
+
+$mech->sleep(1);
+$mech->click({ selector => '.chrome-extension-banner__close-container' });
+
+#$mech->sleep(10);
 
 my $received = $mech->target->add_listener('Network.webSocketFrameReceived', sub {
     my $d = $_[0]->{params}->{response}->{payloadData};

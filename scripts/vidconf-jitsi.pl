@@ -13,15 +13,35 @@ Log::Log4perl->easy_init($ERROR);
 GetOptions(
     'm|meeting-id=s' => \my $meeting_id,
     'n|name=s'       => \my $name,
+    'c|camera=s'       => \my $camera_name,
 );
 
 my %conf = (
+    #camera_name          => qr/^Dummy video device/,
+    #v4l2-ctl --list-devices , grep for that name
     camera_device_plugin => [],
+    camera_ready_test => [],
+    camera_model => 'Canon EOS 5D Mark II',
     camera_setup => [
         "gio mount -u gphoto2://Canon_Inc._Canon_Digital_Camera/",
-        "gphoto2 --stdout --capture-movie | ffmpeg -i - -vcodec rawvideo -pix_fmt yuv420p -threads 0 -f v4l2 /dev/video0",
+        # 'gphoto2 --stdout --capture-movie | ffmpeg -i - -vcodec rawvideo -pix_fmt yuv420p -threads 0 -f v4l2 /dev/video0',
+        'gphoto2 --camera ${camera_model} --stdout --capture-movie | ffmpeg -i - -vcodec rawvideo -pix_fmt yuv420p -threads 0 -f v4l2 /dev/video0',
     ],
 );
+
+#sub prepare_camera( $conf ) {
+#    my %devices;
+#    my $last_device;
+#    for (`v4l2-ctl --list-devices`) {
+#        if( /^(\S.+)/ ) {
+#            $last_device = $1;
+#            $devices[ $last_device ] = [];
+#        }
+#        if( /^\s+(.*)/ ) {
+#            push @{$devices[ $last_device ]}, $1;
+#        };
+#    };
+#}
 
 my $d = tempdir(CLEANUP => 1 );
 my $profile = "$d/profile/test1";

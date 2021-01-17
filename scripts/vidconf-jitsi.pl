@@ -8,6 +8,10 @@ use Log::Log4perl ':easy';
 use File::Temp 'tempdir';
 use File::Path;
 
+use Tickit; # well, later we might move this prerequisite somewhere else
+use Tickit::Widget::Box;
+use Tickit::Widget::Static;
+
 Log::Log4perl->easy_init($ERROR);
 
 GetOptions(
@@ -123,7 +127,26 @@ my $received = $mech->target->add_listener('Network.webSocketFrameReceived', sub
 
 # Consider entering chat via the console?!
 
+my $box = Tickit::Widget::Box->new(
+   h_border => 4,
+   v_border => 2,
+   bg       => "black",
+   child    => Tickit::Widget::Static->new(
+      text     => $meeting_id,
+      bg       => "black",
+      align    => "centre",
+      valign   => "middle",
+   ),
+);
 
-while(1) {
-    $mech->sleep(60);
-};
+my $tickit = Tickit->new( root => $box );
+
+$tickit->bind_key( 'q', sub {
+    $tickit->stop;
+    undef $tickit;
+});
+
+$tickit->run;
+#while(1) {
+#    $mech->sleep(60);
+#};

@@ -17,6 +17,13 @@ GetOptions(
     'n|name=s'       => \my $name,
 );
 
+
+sub camera_is_available() {
+}
+
+sub camera_is_recording() {
+}
+
 my %conf = (
     camera_device_plugin => [],
     camera_setup => [
@@ -115,15 +122,10 @@ while( my @wait = $mech->xpath( $notopen )) {
 
 # Now, enter our name, etc. - this is not yet implemented
 
-my $name_field = $mech->selector( 'div.prejoin-input-area input', one => 1 );
-$mech->set_field( field => $name_field, value => $name );
-$mech->sleep(0.1);
-$mech->click({ selector => '//*[@data-testid="prejoin.joinMeeting"]' });
-
-$mech->sleep(1);
-$mech->click({ selector => '.chrome-extension-banner__close-container' });
-
-#$mech->sleep(10);
+# Now, set up camera
+# Then, click on @data-automation-id="button-settings"
+# Then, click on button[@id="video-tab"]
+# Then, click on div[ @data-automation-id="panel-webcam"] toi enable/disable the webcam
 
 my $received = $mech->target->add_listener('Network.webSocketFrameReceived', sub {
     my $d = $_[0]->{params}->{response}->{payloadData};

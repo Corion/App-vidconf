@@ -29,6 +29,38 @@ Set up camera before launch
 
 =back
 
+=head1 SUPPORTED SERVICES
+
+=over 4
+
+=item *
+
+Jitsi
+
+L<https://meet.jit.si>
+
+=back
+
+=head1 PLANNED SERVICES
+
+=over 4
+
+=item *
+
+GoToMeeting
+
+Half-implemented
+
+=item *
+
+Zoom
+
+=item *
+
+Microsoft Teams
+
+=back
+
 =cut
 
 1;

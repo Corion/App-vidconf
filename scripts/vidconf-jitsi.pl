@@ -35,6 +35,8 @@ my %conf = (
     camera_device_plugin => [],
     camera_ready_test => [],
     camera_model => 'Canon EOS 5D Mark II',
+    # Find if the camera is in use:
+    # cat /proc/modules |grep -i ^v4l2loopback | awk '{ print $3 }'
     camera_setup => [
         "gio mount -u gphoto2://Canon_Inc._Canon_Digital_Camera/",
         # 'gphoto2 --stdout --capture-movie | ffmpeg -i - -vcodec rawvideo -pix_fmt yuv420p -threads 0 -f v4l2 /dev/video0',
@@ -57,14 +59,17 @@ my %conf = (
 #}
 
 my $d = tempdir(CLEANUP => 1 );
-my $profile = "$d/profile/test1";
-mkpath $profile;
+my $profile = "test1";
+mkpath "$d/test1"
+    or warn "$!";
 my $mech = WWW::Mechanize::Chrome->new(
     headless => 0,
     data_directory => $d,
     profile => $profile,
-    enable_first_run => 1,
     mute_audio => 0,
+
+    # Why is this not an option used by default when available?!
+    connection_style => 'pipe',
 );
 
 my $bl = WWW::Mechanize::Chrome::URLBlacklist->new(
@@ -77,6 +82,7 @@ my $bl = WWW::Mechanize::Chrome::URLBlacklist->new(
     whitelist => [
         qr!\bmeet\.jit\.si\b!,
         qr!\bweb-cdn.jitsi.net\b!,
+        qr!\bmeet-jit-si-.*\.jitsi\.net\b!,
         qr!\byoutube\b!,
     ],
 
@@ -91,23 +97,108 @@ my $bl = WWW::Mechanize::Chrome::URLBlacklist->new(
 );
 $bl->enable($mech);
 
-$mech->target->send_message('Browser.grantPermissions',
-    permissions => ['videoCapture','audioCapture'],
-)->get;
+#$mech->target->send_message('Browser.grantPermissions',
+#    permissions => ['videoCapture','audioCapture'],
+#    origin => 'https://meet.jit.si/*',
+#)->get;
 
 $mech->get("https://meet.jit.si/$meeting_id");
 
-$mech->sleep(1);
+# Force the permission "prompt" so we can handle it?!
+
+warn "Stabilizing";
+
+# Give the "app" a moment to stabilize
+$mech->sleep(2);
+
+# https://source.chromium.org/chromium/chromium/src/+/main:third_party/blink/renderer/modules/permissions/permission_descriptor.idl
+# camera
+# microphone
+
+# If/while the overlay is visible, "click" on it to trigger the camera-allow
+# prompt :-/
+if( $mech->is_visible( selector => '#overlay', maybe => 1 )) {
+    warn "Waiting for overlay dismissal";
+    $mech->target->send_message('Browser.grantPermissions',
+        permissions => ['videoCapture','audioCapture'],
+    )->get;
+
+# Force more permissions
+    $mech->target->send_message('Browser.setPermission',
+        permission => {
+                name => 'microphone',
+        },
+        setting => 'granted',
+        #browserContextId => $info->{targetInfo}->{browserContextId},
+    )->get;
+    $mech->target->send_message('Browser.setPermission',
+        permission => {
+                name => 'camera',
+        },
+        setting => 'granted',
+        #browserContextId => $info->{targetInfo}->{browserContextId},
+    )->get;
+
+
+# Dump the permissions we have
+    $mech->eval_in_page(<<~'JS');
+        navigator.permissions.query({name:'microphone'})
+        .then((perms)=> {
+            console.log(perms.state);
+        });
+        navigator.permissions.query({name:'camera'})
+        .then((perms)=> {
+            console.log(perms.state);
+        });
+    JS
+
+    while( $mech->is_visible( selector => '#overlay', maybe => 1 )) {
+        warn "Waiting for overlay dismissal";
+        #$mech->click({ selector => '#overlay' });
+        # Simulate a real mouse click so the browser UI kicks in:
+        #$mech->target->send_message('Input.dispatchMouseEvent',
+        #    type => 'mousePressed',
+        #    x => 10,
+        #    y => 10,
+        #)->get;
+        #$mech->target->send_message('Input.dispatchMouseEvent',
+        #    type => 'mouseReleased',
+        #    x => 10,
+        #    y => 10,
+        #)->get;
+        $mech->sleep(1);
+    };
+    warn "Overlay/camera permissions popup done";
+};
+
+$mech->wait_until_visible(selector => 'div.prejoin-input-area input');
 
 my $name_field = $mech->selector( 'div.prejoin-input-area input', one => 1 );
 $mech->set_field( field => $name_field, value => $name );
+
+# (optionally) hide ourselves from the gallery
+
+# Meh - German localization, instead of having some proper id :-/
+#my @labels = $mech->xpath('//*[@aria-label]');
+
+#$mech->click({ xpath => '//*[@aria-label="Einstellungen ein-/ausschalten"]' });
+
+#$mech->click({ xpath => '//*[@aria-label="Toggle settings"]' });
+#$mech->sleep(0.1);
+#
+## Switch to tab number 5 ...
+#$mech->click({ xpath => '//*[text()="More"]' });
+#$mech->sleep(0.1);
+
+#$mech->click({ xpath => '//input[@name="hide-self-view"]' });
+
 $mech->sleep(0.1);
 $mech->click({ selector => '//*[@data-testid="prejoin.joinMeeting"]' });
 
 $mech->sleep(1);
-$mech->click({ selector => '.chrome-extension-banner__close-container' });
-
-#$mech->sleep(10);
+if( $mech->is_visible(selector => '.chrome-extension-banner__close-container')) {
+    $mech->click({ selector => '.chrome-extension-banner__close-container' });
+};
 
 my $window_info = $mech->target->send_message('Browser.getWindowForTarget')->get;
 #use Data::Dumper; warn Dumper $window_info;

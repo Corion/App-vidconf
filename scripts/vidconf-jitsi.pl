@@ -2,17 +2,26 @@
 use strict;
 use warnings;
 use Getopt::Long;
+use IO::Async;
+use Tickit::Async;
 use WWW::Mechanize::Chrome;
 use WWW::Mechanize::Chrome::URLBlacklist;
 use Log::Log4perl ':easy';
 use File::Temp 'tempdir';
 use File::Path;
 
+use feature 'signatures';
+no warnings 'experimental';
+
 use Tickit; # well, later we might move this prerequisite somewhere else
 use Tickit::Widget::Box;
+use Tickit::Console;
 use Tickit::Widget::Static;
+use Tickit::Widget::VBox;
+use Tickit::Widget::Statusbar;
+use Tickit::Widget::FloatBox;
 
-Log::Log4perl->easy_init($ERROR);
+Log::Log4perl->easy_init($WARN);
 
 GetOptions(
     'm|meeting-id=s' => \my $meeting_id,
@@ -119,32 +128,111 @@ $mech->target->send_message('Browser.setWindowBounds',
     },
 )->get;
 
+my @chat;
+my $chat_scrollback = 3000;
+
+my $tickit;
+
+my $console = Tickit::Console->new(
+    timestamp_format => String::Tagged->new_tagged( "%H:%M ", fg => undef )
+        ->apply_tag( 0, 5, fg => "hi-blue" ),
+    datestamp_format => String::Tagged->new_tagged( "-- day is now %Y/%m/%d --",
+        fg => "grey" ),
+    on_line => sub( $tab, $text ) {
+        $text =~ s!\s$!!;
+        if( $text eq 'q' ) {
+            $tickit->stop;
+            undef $tickit;
+        };
+    },
+);
+
+# This window setup is basically taken from App::MatrixClient
+sub new_room_tab( $console, $meeting_id ) {
+    my ($headline,$floatbox);
+    my $room_tab = $console->add_tab(
+      name => $meeting_id,
+      make_widget => sub {
+         my ( $scroller ) = @_;
+
+         my $vbox = Tickit::Widget::VBox->new;
+
+         $vbox->add( $headline = Tickit::Widget::Static->new(
+               text => $meeting_id,
+               style => { bg => "blue" },
+            ),
+            expand => 0
+         );
+         $vbox->add( $scroller, expand => 1 );
+
+         my $fb = Tickit::Widget::FloatBox->new();
+         $fb->set_base_child( $vbox );
+         return $fb;
+      },
+      #on_line => sub {
+      #   my ( $tab, $line ) = @_;
+      #   if( $line =~ s{^/}{} ) {
+      #      my ( $cmd, @args ) = split m/\s+/, $line;
+      #      if( my $code = $tab->can( "cmd_$cmd" ) ) {
+      #         $room->adopt_future( $tab->$code( @args ) );
+      #      }
+      #      else {
+      #         $self->do_command( $line, $tab );
+      #      }
+      #   }
+      #   else {
+      #      $room->adopt_future( $room->send_message( $line ) );
+      #      $room->typing_stop;
+      #   }
+      #},
+   );
+}
+
+my $typing_line; # status, currently unused
+
+sub add_chat( $user, $line ) {
+    my $tab = $console->active_tab;
+    if( $typing_line ) {
+        my @after = $console->{scroller}->pop;
+        $tab->append_line( $line );
+        $tab->{scroller}->push( @after );
+    }
+    else {
+        $tab->append_line( $line );
+    }
+}
+
 my $received = $mech->target->add_listener('Network.webSocketFrameReceived', sub {
     my $d = $_[0]->{params}->{response}->{payloadData};
     use Data::Dumper;
-    warn $d;
+    my $t = Dumper $d;
+
+    # Baaad XML parsing :-)
+    # <message type=\'groupchat\' to=\'b54b8218-350c-44f3-9dd5-1e9c31bf14a3@meet.jit.si/747lP2Ty\' from=\'test12345-max@conference.meet.jit.si/b54b8218\'
+    # xmlns=\'jabber:client\'><body>bbb</body><nick xmlns=\'http://jabber.org/protocol/nick\'>Max</nick></message>
+    if( $d =~ m!^<message[^>]+><body>(.*?)</body><nick[^>]*>([^<]+)</nick>!s ) {
+        add_chat($2,$1);
+    } else {
+        add_chat('???', $t);
+    };
 });
 
 # Consider entering chat via the console?!
 
-my $box = Tickit::Widget::Box->new(
-   h_border => 4,
-   v_border => 2,
-   bg       => "black",
-   child    => Tickit::Widget::Static->new(
-      text     => $meeting_id,
-      bg       => "black",
-      align    => "centre",
-      valign   => "middle",
-   ),
+$tickit = Tickit::Async->new(
+    root => $console,
+    use_altscreen => 0,
 );
 
-my $tickit = Tickit->new( root => $box );
+my $loop = IO::Async::Loop->new;
+$loop->add( $tickit );
 
-$tickit->bind_key( 'q', sub {
-    $tickit->stop;
-    undef $tickit;
-});
+new_room_tab($console, $meeting_id);
+
+#$tickit->bind_key( 'q', sub {
+#    $tickit->stop;
+#    undef $tickit;
+#});
 
 $tickit->run;
 #while(1) {
